@@ -5,8 +5,8 @@ module spi_testbench;
     reg rstn;              // 全局复位信号  
     wire sck;              // SPI 时钟  
     wire csn;              // SPI 片选信号  
-    wire mo;               // SPI 主设备数据输出 (MOSI)  
-    wire mi;               // SPI 从设备数据输出 (MISO)  
+    wire mosi;               // SPI 主设备数据输出 (MOSI)  
+    wire miso;               // SPI 从设备数据输出 (MISO)  
 
     // Master 和 Slave 的实例化  
     spi_master #(.CLK_DIV(4)) master (  
@@ -14,15 +14,15 @@ module spi_testbench;
         .rstn(rstn),  
         .sck(sck),  
         .csn(csn),  
-        .mo(mo),  
-        .mi(mi)  
+        .mo(mosi),  
+        .mi(miso)  
     );  
 
     spi_slave slave (  
         .sck(sck),  
         .csn(csn),  
-        .si(mo),  
-        .so(mi),  
+        .si(mosi),  
+        .so(miso),  
         .rstn(rstn)  
     );  
 
