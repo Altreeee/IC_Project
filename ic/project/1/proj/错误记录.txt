@@ -1,0 +1,79 @@
+Verilog的语序是个大坑，我总是不自觉地按照普通的语言来理解Verilog的代码，搞得老是出错。
+特此记录。
+
+关于always块中的非阻塞赋值和if语句：
+	always块中的所有非阻塞赋值（<=）都是概念上同时发生的
+	这包括if语句内部的非阻塞赋值也是如此
+	if语句本身是顺序执行的决策结构，但其中的非阻塞赋值仍然是与always块中的其他非阻塞赋值同时计算、同时更新的
+
+关于always触发条件和执行时的信号状态：
+	对于always @(posedge clk)，当检测到时钟上升沿时触发
+	此时在always块内执行语句时，clk信号已经是上升后的状态，即为1
+	代码执行时使用的是触发点之后（上升沿后）的信号值
+	在触发always @(posedge clk)时：
+
+	clk已经从0变为1
+	块内的语句使用的是clk=1的状态
+	所有其他信号也是在这个时间点的当前值
+
+always @(posedge clk or negedge rstn) begin
+case:
+TRANSFER: begin  
+                    // 时钟分频逻辑  
+                    if (clk_div_cnt == CLK_DIV - 1) begin  
+                        clk_div_cnt <= 16'd0;  
+                        sck_d <= sck;
+                        sck <= ~sck; // 翻转 SPI 时钟  
+                        
+                        // 基于翻转前的SCK和sck_d判断当前处于什么边沿  
+                        // 正在生成上升沿：当前sck为0，即将变为1  
+                        if (sck == 1'b0) begin  
+                            // 在SCK即将上升前设置输出位                                                          
+                            mo <= shift_reg[31];  
+                        end  
+                        // 正在生成下降沿：当前sck为1，即将变为0  
+                        else begin  
+                            // 下降沿操作  
+                            shift_reg <= {shift_reg[30:0], mi}; // 接收数据并移位  
+                            bit_cnt <= bit_cnt + 1'b1;  
+                            if (bit_cnt == 5'd31) begin  
+                                state <= IDLE;  
+                                csn <= 1'b1;  
+                                sck_en <= 1'b0;  
+                            end  
+                        end  
+                        
+                    end else begin  
+                        clk_div_cnt <= clk_div_cnt + 1'b1;  
+                    end  
+                end
+
+
+这一段代码我原来是这样写的：
+if (clk_div_cnt == CLK_DIV - 1) begin  
+    clk_div_cnt <= 16'd0;  
+    sck <= ~sck; // 翻转 SPI 时钟  
+    if (sck && sck_d) begin  
+        // 在时钟上升沿发送数据  
+        mo <= shift_reg[31]; // 发送最高位  
+        bit_cnt <= bit_cnt + 1'b1;  
+        if (bit_cnt == 5'd31) begin  
+            state <= IDLE; // 完成 32 位传输，回到空闲状态  
+            csn <= 1'b1;   // 拉高片选信号，结束通信  
+            sck_en <= 1'b0; // 禁止 SPI 时钟  
+        end  
+    end else begin
+        //时钟下降沿接收
+        shift_reg <= {shift_reg[30:0], mi}; // 接收数据并移位  
+    end
+}
+
+“
+    sck <= ~sck; // 翻转 SPI 时钟  
+    if (sck && sck_d) begin  
+”
+这里是一个巨大的问题，我想的是，先sck翻转，此时sck_d是上一个时钟时sck的状态，然后用sck当下的值与sck上个时钟的状态(sck_d)来判断此时sck是否有翻转，是从0变1还是从1变0。可是有一个重要的问题是这段话中翻转和if判断实际上是同时进行的，当这一段状态结束后，sck才会变成翻转后的值，而我忘记了这个时序问题。
+
+
+
+

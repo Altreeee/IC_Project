@@ -29,7 +29,7 @@ module spi_master(
     state_t state;  
 
 
-    // 初始化  
+    // 主逻辑  
     always @(posedge clk or negedge rstn) begin  
         if (!rstn) begin  
             sck <= 1'b0;  
@@ -43,7 +43,7 @@ module spi_master(
              
         end else begin  
             // 延迟一个时钟周期的 sck 信号  
-            sck_d <= sck; 
+            //sck_d <= sck;   /////////////////////////////////////////////////////////////////原来没有注释
             case (state)  
                 // 空闲状态  
                 IDLE: begin  
@@ -70,20 +70,26 @@ module spi_master(
                     // 时钟分频逻辑  
                     if (clk_div_cnt == CLK_DIV - 1) begin  
                         clk_div_cnt <= 16'd0;  
+                        sck_d <= sck;
                         sck <= ~sck; // 翻转 SPI 时钟  
-                        if (sck && sck_d) begin  
-                            // 在时钟上升沿发送数据  
-                            mo <= shift_reg[31]; // 发送最高位  
+                        
+                        // 基于翻转前的SCK和sck_d判断当前处于什么边沿  
+                        // 正在生成上升沿：当前sck为0，即将变为1  
+                        if (sck == 1'b0) begin  
+                            // 在SCK即将上升前设置输出位  
+                            mo <= shift_reg[31];  
+                        end  
+                        // 正在生成下降沿：当前sck为1，即将变为0  
+                        else begin  
+                            // 下降沿操作  
+                            shift_reg <= {shift_reg[30:0], mi}; // 接收数据并移位  
                             bit_cnt <= bit_cnt + 1'b1;  
                             if (bit_cnt == 5'd31) begin  
-                                state <= IDLE; // 完成 32 位传输，回到空闲状态  
-                                csn <= 1'b1;   // 拉高片选信号，结束通信  
-                                sck_en <= 1'b0; // 禁止 SPI 时钟  
+                                state <= IDLE;  
+                                csn <= 1'b1;  
+                                sck_en <= 1'b0;  
                             end  
-                        end else begin
-                            //时钟下降沿接收
-                            shift_reg <= {shift_reg[30:0], mi}; // 接收数据并移位  
-                        end
+                        end  
                         
                     end else begin  
                         clk_div_cnt <= clk_div_cnt + 1'b1;  
