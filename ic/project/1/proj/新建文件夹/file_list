@@ -1,0 +1,3 @@
+./spi_master_top.v
+./spi_slave_top.v
+./tb.sv
