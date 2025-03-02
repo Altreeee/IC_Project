@@ -3,6 +3,7 @@
 
 
 module spi_slave(  
+    input wire clk, 
     input wire sck,       // SPI 时钟输入  
     input wire csn,       // 片选信号输入，低电平有效  
     input wire si,        // 主设备数据输出 (MOSI)  

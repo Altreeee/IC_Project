@@ -19,7 +19,7 @@ module spi_testbench;
     );  
 
     spi_slave slave (  
-        //.clk(clk),
+        .clk(clk),
         .sck(sck),  
         .csn(csn),  
         .si(mosi),  

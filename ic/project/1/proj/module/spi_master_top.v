@@ -55,9 +55,10 @@ module spi_master(
     wire [23:0] ram_data;   // RAM 数据总线  
 
     // 状态机定义  
-    typedef enum reg [1:0] {  
+    typedef enum reg [2:0] {  
         IDLE,    // 空闲状态 
         WAIT,    // 等待RAM 
+        WAIT2,
         START,   // 开始通信  
         TRANSFER // 数据传输  
     } state_t;  
@@ -116,27 +117,33 @@ module spi_master(
                     bit_cnt <= 6'd0;  
                     sck_en <= 1'b0;  
                     if (time_cnt > 1'b0) begin  
-                        state <= START;   
-                        // 从 RAM 中读取数据到 data_reg  上半
-                        ram_cs <= 1'b1;  
-                        ram_we <= 1'b0;  
-                        ram_oe <= 1'b1;  
-                        ram_addr <= 5'd0; 
+                        state <= WAIT;   
+
                     end else begin  
                         state <= IDLE;  
                     end  
                 end  
 
                 WAIT: begin
-                    // 从 RAM 中读取数据到 data_reg  下半 
-                    data_reg <= ram_data; // 将 RAM 数据加载到 data_reg
-                    state <= START;
+                    // 从 RAM 中读取数据到 data_reg  上半
+                    ram_cs <= 1'b1;  
+                    ram_we <= 1'b0;  
+                    ram_oe <= 1'b1;  
+                    ram_addr <= 5'd0; 
+
+                    state <= WAIT2;
                 end
+                WAIT2: begin  
+                    // 等待一个时钟周期，让 ram_data 稳定  
+                    state <= START;  
+                end 
 
                 START: begin  
                     csn <= 1'b0;    // 拉低片选，开始通信  
                     sck_en <= 1'b1; // 允许SPI时钟工作  
                     state <= TRANSFER;  
+                    // 从 RAM 中读取数据到 data_reg  下半 
+                    data_reg <= ram_data; // 将 RAM 数据加载到 data_reg
                 end  
 
                 TRANSFER: begin  
