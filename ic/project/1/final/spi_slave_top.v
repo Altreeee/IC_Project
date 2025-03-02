@@ -1,7 +1,48 @@
-`include "single_port_sync_ram.vh"  
+//https://www.chipverify.com/verilog/verilog-single-port-ram 
+module single_port_sync_ram_slave
+  # (parameter ADDR_WIDTH = 5,
+     parameter DATA_WIDTH = 24,
+     parameter DEPTH = 32
+    )
+
+  ( 	input 					clk,
+   		input [ADDR_WIDTH-1:0]	addr,
+   		inout [DATA_WIDTH-1:0]	data,
+   		input 					cs,
+   		input 					we,
+   		input 					oe
+  );
+
+  reg [DATA_WIDTH-1:0] 	tmp_data;
+  reg [DATA_WIDTH-1:0] 	mem [DEPTH];
+
+  always @ (posedge clk) begin
+    if (cs & we)
+      mem[addr] <= data;
+  end
+
+  always @ (posedge clk) begin
+    if (cs & !we)
+    	tmp_data <= mem[addr];
+  end
+
+  assign data = cs & oe & !we ? tmp_data : 'hz; //读为1且写为0时data会被赋值为tmp_data（此时可以读RAM的内容）
+
+  // 初始化 RAM 内容  
+  initial begin  
+    // 初始化地址 0 的数据  
+    mem[0] = 24'hFEDCBA; // 示例数据  
+    // 初始化其他地址为 0  
+    for (int i = 1; i < DEPTH; i = i + 1) begin  
+      mem[i] = 24'h000000;  
+    end  
+  end  
+  
+endmodule
 
 
-module spi_slave(  
+
+module spi_slave_top(  
     input wire clk, 
     input wire sck,       // SPI 时钟输入  
     input wire csn,       // 片选信号输入，低电平有效  
@@ -24,7 +65,7 @@ module spi_slave(
     wire [23:0] ram_data;   // RAM 数据总线  
 
     // 实例化 RAM 模块  
-    single_port_sync_ram #(  
+    single_port_sync_ram_slave #(  
         .ADDR_WIDTH(5),  
         .DATA_WIDTH(24),  
         .DEPTH(32)  
@@ -43,6 +84,9 @@ module spi_slave(
     // CRC-8 SAE-J1850 多项式  
     parameter CRC_POLY = 8'h1D; 
 
+    reg [7:0] calculated_crc;  
+    reg [23:0] temp_data;  
+    integer i; 
     // 状态机定义  
     typedef enum reg [2:0] {  
         IDLE,    // 空闲状态 
@@ -55,22 +99,21 @@ module spi_slave(
     // 状态机主逻辑  
     always @(posedge clk or negedge rstn) begin  
         if (!rstn) begin  
-
             data_reg <= 24'hA5A5A5; // 初始化数据寄存器 
             crc_reg <= 8'hFF;       // 初始化CRC寄存器  
             bit_cnt <= 6'd0;  
-
             state <= IDLE;  
 
         end else begin  
             case (state)  
                 IDLE: begin  
-
                     bit_cnt <= 6'd0;  
- 
-
-                    state <= START;   
-                     
+                    state <= WAIT;  
+                    // 复位 RAM 控制信号  
+                    ram_cs <= 1'b0;  
+                    ram_we <= 1'b0;  
+                    ram_oe <= 1'b0;  
+                                
                 end  
 
                 WAIT: begin
@@ -87,19 +130,38 @@ module spi_slave(
                 end 
 
                 START: begin  
-                    state <= TRANSFER;  
-                    // 从 RAM 中读取数据到 data_reg  下半 
-                    data_reg <= ram_data; // 将 RAM 数据加载到 data_reg
+                    if (csn) begin
+                        state <= START;
+                    end else begin 
+                        state <= TRANSFER;  
+                        // 从 RAM 中读取数据到 data_reg  下半 
+                        data_reg <= ram_data; // 将 RAM 数据加载到 data_reg
+                    end
                 end  
 
                 TRANSFER: begin  
                     if (bit_cnt == 6'd32) begin  // 完成传输
                         state <= IDLE;  
 
-
-
-
                         /*检查CRC*/
+                        // 重新计算 CRC   
+                        calculated_crc = 8'hFF;  // 初始化 CRC  
+                        temp_data = data_reg;    // 获取当前数据  
+                        for (i = 0; i < 24; i = i + 1) begin  
+                            if (calculated_crc[7] ^ temp_data[23]) begin  
+                                calculated_crc = (calculated_crc << 1) ^ CRC_POLY;  
+                            end else begin  
+                                calculated_crc = (calculated_crc << 1);  
+                            end  
+                            temp_data = temp_data << 1;  // 左移数据  
+                        end  
+
+                        // 比较重新计算的 CRC 和接收到的 CRC  
+                        if (calculated_crc != crc_reg) begin  
+                            $display("CRC Error: Calculated CRC = %h, Received CRC = %h", calculated_crc, crc_reg);  
+                        end else begin  
+                            $display("CRC Check Passed");  
+                        end  
 
                         // 将 data_reg 写回 RAM  
                         //前面已经有assign ram_data = (ram_cs && ram_we) ? data_reg : 'hz; 所以只需要改读写权限
@@ -149,7 +211,7 @@ module spi_slave(
                 data_reg <= {data_reg[22:0], si};  
             end else begin  
                 // 接收CRC校验位  
-                crc_reg <= {crc_reg[6:0], so};  
+                crc_reg <= {crc_reg[6:0], si};  
             end 
             bit_cnt <= bit_cnt + 1'b1;  
         end  
