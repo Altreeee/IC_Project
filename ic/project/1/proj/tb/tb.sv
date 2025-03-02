@@ -41,15 +41,15 @@ module spi_testbench;
         rstn = 1;  
 
         // 初始化 Master 的 RAM 数据  
-        master.ram_inst.mem[0] = 24'hABCDEF; // 地址 0 写入数据 0xABCDEF  
-        for (int i = 1; i < 32; i = i + 1) begin  
-            master.ram_inst.mem[i] = 24'h000000; // 其他地址初始化为 0  
-        end  
+        //master.ram_inst.mem[0] = 24'hABCDEF; // 地址 0 写入数据 0xABCDEF  
+        //for (int i = 1; i < 32; i = i + 1) begin  
+            //master.ram_inst.mem[i] = 24'h000000; // 其他地址初始化为 0  
+        //end  
 
         // 初始化 Slave 的 RAM 数据  
         //slave.ram_inst.mem[0] = 24'hFEDCBA; // 地址 0 写入数据 0xFEDCBA  
         //for (int i = 1; i < 32; i = i + 1) begin  
-        //    slave.ram_inst.mem[i] = 24'h000000; // 其他地址初始化为 0  
+            //slave.ram_inst.mem[i] = 24'h000000; // 其他地址初始化为 0  
         //end  
 
         // 等待 Master 和 Slave 开始通信  
