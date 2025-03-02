@@ -38,7 +38,9 @@ module spi_master(
     parameter CLK_DIV = 4;  // SPI时钟分频比  
 
     // 内部寄存器  
-    reg [31:0] shift_reg;   // 32位移位寄存器  
+    //reg [31:0] shift_reg;   // 32位移位寄存器  
+    reg [23:0] data_reg;    //24位寄存器存储数据位
+    reg [7:0] crc_reg;      //8位寄存器存储crc校验码
     reg [5:0] bit_cnt;      // 位计数器（0~31）  
     reg sck_en;             // SPI时钟使能信号  
     reg time_cnt;           // 运行次数  
@@ -66,11 +68,15 @@ module spi_master(
     // 将 spi_clk_gen 生成的 spi_sck 信号连接到模块的 sck 输出  
     assign sck = spi_sck; 
     
+    // CRC-8 SAE-J1850 多项式  
+    parameter CRC_POLY = 8'h1D; 
+
     // 状态机主逻辑  
     always @(posedge clk or negedge rstn) begin  
         if (!rstn) begin  
             csn <= 1'b1; // 片选默认无效  
-            shift_reg <= 32'hA5A5A5A5;  
+            data_reg <= 24'hA5A5A5; // 初始化数据寄存器 
+            crc_reg <= 8'hFF;       // 初始化CRC寄存器  
             bit_cnt <= 6'd0;  
             sck_en <= 1'b0;  
             state <= IDLE;  
@@ -112,20 +118,37 @@ module spi_master(
     always @(posedge spi_sck or negedge rstn) begin  
         if (!rstn) begin  
             mo <= 1'b0;  
+            crc_reg <= 8'hFF; // 初始化CRC寄存器
         end else if (!csn && sck_en) begin  
-            // SCK 上升沿发送数据  
-            mo <= shift_reg[31];  
+            if (bit_cnt < 24) begin  
+                // SCK 上升沿发送数据  
+                mo <= data_reg[23];  
+                // 动态更新CRC寄存器  
+                if (crc_reg[7] ^ data_reg[23]) begin  //异或
+                    crc_reg <= (crc_reg << 1) ^ CRC_POLY;  
+                end else begin  
+                    crc_reg <= (crc_reg << 1);  
+                end  
+            end else begin  
+                // 发送CRC校验位  
+                mo <= crc_reg[7];  
+            end  
         end  
     end  
 
     // 在 SCK 下降沿处理：接收数据（读取 MISO）  
     always @(negedge spi_sck or negedge rstn) begin  
         if (!rstn) begin  
-            shift_reg <= 32'hA5A5A5A5; // 初始化移位寄存器  
+            data_reg <= 24'hA5A5A5; // 初始化数据寄存器    
             bit_cnt <= 6'd0;  
         end else if (!csn && sck_en) begin  
             // SCK 下降沿接收数据  
-            shift_reg <= {shift_reg[30:0], mi};  
+            if (bit_cnt < 24) begin
+                data_reg  <= {data_reg [22:0], mi};  
+            end else begin  
+                // 接收CRC校验位  
+                crc_reg <= {crc_reg[6:0], mi};  
+            end 
             bit_cnt <= bit_cnt + 1'b1;  
         end  
     end  
