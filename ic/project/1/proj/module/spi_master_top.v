@@ -24,36 +24,7 @@ module spi_clk_gen(
     end  
 endmodule
 
-//https://www.chipverify.com/verilog/verilog-single-port-ram 
-module single_port_sync_ram
-  # (parameter ADDR_WIDTH = 4,
-     parameter DATA_WIDTH = 32,
-     parameter DEPTH = 16
-    )
-
-  ( 	input 					clk,
-   		input [ADDR_WIDTH-1:0]	addr,
-   		inout [DATA_WIDTH-1:0]	data,
-   		input 					cs,
-   		input 					we,
-   		input 					oe
-  );
-
-  reg [DATA_WIDTH-1:0] 	tmp_data;
-  reg [DATA_WIDTH-1:0] 	mem [DEPTH];
-
-  always @ (posedge clk) begin
-    if (cs & we)
-      mem[addr] <= data;
-  end
-
-  always @ (posedge clk) begin
-    if (cs & !we)
-    	tmp_data <= mem[addr];
-  end
-
-  assign data = cs & oe & !wr ? tmp_data : 'hz;
-endmodule
+`include "single_port_sync_ram.vh"  
 
 
 module spi_master(  
@@ -76,9 +47,17 @@ module spi_master(
     reg sck_en;             // SPI时钟使能信号  
     reg time_cnt;           // 运行次数  
 
+    // RAM 控制信号  
+    reg [4:0] ram_addr;     // RAM 地址，假设 5 位宽度  
+    reg ram_cs;             // RAM 片选信号  
+    reg ram_we;             // RAM 写使能信号  
+    reg ram_oe;             // RAM 读使能信号  
+    wire [23:0] ram_data;   // RAM 数据总线  
+
     // 状态机定义  
     typedef enum reg [1:0] {  
-        IDLE,    // 空闲状态  
+        IDLE,    // 空闲状态 
+        WAIT,    // 等待RAM 
         START,   // 开始通信  
         TRANSFER // 数据传输  
     } state_t;  
@@ -102,6 +81,23 @@ module spi_master(
     // CRC-8 SAE-J1850 多项式  
     parameter CRC_POLY = 8'h1D; 
 
+    // 实例化 RAM 模块  
+    single_port_sync_ram #(  
+        .ADDR_WIDTH(5),  
+        .DATA_WIDTH(24),  
+        .DEPTH(32)  
+    ) ram_inst (  
+        .clk(clk),  
+        .addr(ram_addr),  
+        .data(ram_data),  
+        .cs(ram_cs),  
+        .we(ram_we),  
+        .oe(ram_oe)  
+    );  
+
+    // RAM 数据总线的驱动逻辑  
+    assign ram_data = (ram_cs && ram_we) ? data_reg : 'hz;  //当开启写时ram_data被赋值为data_reg
+    
     // 状态机主逻辑  
     always @(posedge clk or negedge rstn) begin  
         if (!rstn) begin  
@@ -112,6 +108,7 @@ module spi_master(
             sck_en <= 1'b0;  
             state <= IDLE;  
             time_cnt <= 1'b1;  
+
         end else begin  
             case (state)  
                 IDLE: begin  
@@ -120,10 +117,21 @@ module spi_master(
                     sck_en <= 1'b0;  
                     if (time_cnt > 1'b0) begin  
                         state <= START;   
+                        // 从 RAM 中读取数据到 data_reg  上半
+                        ram_cs <= 1'b1;  
+                        ram_we <= 1'b0;  
+                        ram_oe <= 1'b1;  
+                        ram_addr <= 5'd0; 
                     end else begin  
                         state <= IDLE;  
                     end  
                 end  
+
+                WAIT: begin
+                    // 从 RAM 中读取数据到 data_reg  下半 
+                    data_reg <= ram_data; // 将 RAM 数据加载到 data_reg
+                    state <= START;
+                end
 
                 START: begin  
                     csn <= 1'b0;    // 拉低片选，开始通信  
@@ -132,11 +140,20 @@ module spi_master(
                 end  
 
                 TRANSFER: begin  
-                    if (bit_cnt == 6'd32) begin  
+                    if (bit_cnt == 6'd32) begin  // 完成传输
                         state <= IDLE;  
                         csn <= 1'b1;   // 完成传输后关闭片选  
-                        sck_en <= 1'b0;  
+                        sck_en <= 1'b0;  // 关闭spi时钟
                         time_cnt <= time_cnt - 1'b1;  
+
+                        /*检查CRC*/
+
+                        // 将 data_reg 写回 RAM  
+                        //前面已经有assign ram_data = (ram_cs && ram_we) ? data_reg : 'hz; 所以只需要改读写权限
+                        ram_cs <= 1'b1;  
+                        ram_we <= 1'b1;  
+                        ram_oe <= 1'b0;  
+                        ram_addr <= 5'd0; // 写入地址  
                     end  
                 end  
 
@@ -170,7 +187,7 @@ module spi_master(
     // 在 SCK 下降沿处理：接收数据（读取 MISO）  
     always @(negedge spi_sck or negedge rstn) begin  
         if (!rstn) begin  
-            data_reg <= 24'hA5A5A5; // 初始化数据寄存器    
+            data_reg <= 24'hFFFFFF; // 初始化数据寄存器    
             bit_cnt <= 6'd0;  
         end else if (!csn && sck_en) begin  
             // SCK 下降沿接收数据  
