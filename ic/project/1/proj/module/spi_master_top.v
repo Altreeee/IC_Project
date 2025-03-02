@@ -139,6 +139,9 @@ module spi_master(
     // RAM 数据总线的驱动逻辑  
     assign ram_data = (ram_cs && ram_we) ? data_reg : 'hz;  //当开启写时ram_data被赋值为data_reg
     
+    reg [7:0] calculated_crc;  
+    reg [23:0] temp_data;  
+    integer i; 
     // 状态机主逻辑  
     always @(posedge clk or negedge rstn) begin  
         if (!rstn) begin  
@@ -194,6 +197,24 @@ module spi_master(
                         time_cnt <= time_cnt - 1'b1;  
 
                         /*检查CRC*/
+                        // 重新计算 CRC  
+                        calculated_crc = 8'hFF;  // 初始化 CRC  
+                        temp_data = data_reg;    // 获取当前数据  
+                        for (i = 0; i < 24; i = i + 1) begin  
+                            if (calculated_crc[7] ^ temp_data[23]) begin  
+                                calculated_crc = (calculated_crc << 1) ^ CRC_POLY;  
+                            end else begin  
+                                calculated_crc = (calculated_crc << 1);  
+                            end  
+                            temp_data = temp_data << 1;  // 左移数据  
+                        end  
+
+                        // 比较重新计算的 CRC 和接收到的 CRC  
+                        if (calculated_crc != crc_reg) begin  
+                            $display("CRC Error: Calculated CRC = %h, Received CRC = %h", calculated_crc, crc_reg);  
+                        end else begin  
+                            $display("CRC Check Passed");  
+                        end  
 
                         // 将 data_reg 写回 RAM  
                         //前面已经有assign ram_data = (ram_cs && ram_we) ? data_reg : 'hz; 所以只需要改读写权限
