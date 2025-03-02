@@ -1,7 +1,8 @@
 module spi_testbench;  
 
     // Testbench 信号  
-    reg clk;               // 全局时钟  
+    reg clk_master;              // 主设备时钟  
+    reg clk_slave;               // 从设备时钟  
     reg rstn;              // 全局复位信号  
     wire sck;              // SPI 时钟  
     wire csn;              // SPI 片选信号  
@@ -10,7 +11,7 @@ module spi_testbench;
 
     // Master 和 Slave 的实例化  
     spi_master #(.CLK_DIV(4)) master (  
-        .clk(clk),  
+        .clk(clk_master),  
         .rstn(rstn),  
         .sck(sck),  
         .csn(csn),  
@@ -19,7 +20,7 @@ module spi_testbench;
     );  
 
     spi_slave slave (  
-        .clk(clk),
+        .clk(clk_slave),
         .sck(sck),  
         .csn(csn),  
         .si(mosi),  
@@ -29,8 +30,12 @@ module spi_testbench;
 
     // 时钟生成  
     initial begin  
-        clk = 0;  
-        forever #5 clk = ~clk; // 100MHz 时钟，周期为 10ns  
+        clk_master = 0;  
+        forever #5 clk_master = ~clk_master; // 100MHz 时钟，周期为 10ns  
+    end  
+    initial begin  
+        clk_slave = 0;  
+        forever #2 clk_slave = ~clk_slave; // 100MHz 时钟，周期为 10ns  
     end  
 
     // 初始化 Master 和 Slave 的 RAM 数据  
