@@ -1,15 +1,15 @@
 module testbench;  
 
     // Testbench 信号  
-    reg clk_master;              // 主设备时钟  
-    reg clk_slave;               // 从设备时钟  
-    reg rstn;              // 全局复位信号  
-    wire sck;              // SPI 时钟  
-    wire csn;              // SPI 片选信号  
-    wire mosi;             // SPI 主设备数据输出 (MOSI)  
-    wire miso;             // SPI 从设备数据输出 (MISO)  
+    reg clk_master;              
+    reg clk_slave;               
+    reg rstn;              
+    wire sck;              
+    wire csn;               
+    wire mosi;             
+    wire miso;             
 
-    // Master 和 Slave 的实例化  
+    // Instantiation of Master and Slave 
     spi_master #(.CLK_DIV(4)) master (  
         .clk(clk_master),  
         .rstn(rstn),  
@@ -28,46 +28,46 @@ module testbench;
         .rstn(rstn)  
     );  
 
-    // 时钟生成  
+    // Clock Generation 
     initial begin  
         clk_master = 0;  
-        forever #5 clk_master = ~clk_master; // 100MHz 时钟，周期为 10ns  
+        forever #5 clk_master = ~clk_master; 
     end  
     initial begin  
         clk_slave = 0;  
-        forever #2 clk_slave = ~clk_slave; // 100MHz 时钟，周期为 10ns  
+        forever #2 clk_slave = ~clk_slave; 
     end  
 
-    // 初始化 Master 和 Slave 的 RAM 数据  
+    // Initialize the RAM data for Master and Slave
     initial begin  
-        // 初始化复位信号  
+  
         rstn = 0;  
-        #20; // 保持复位 20ns  
+        #20; // Hold reset for 20ns
         rstn = 1;  
 
-        // 初始化 Master 的 RAM 数据  
-        //master.ram_inst.mem[0] = 24'hABCDEF; // 地址 0 写入数据 0xABCDEF  
+        // Initialize the Master's RAM data 
+        //master.ram_inst.mem[0] = 24'hABCDEF; // Write data 0xABCDEF to address 0  
         //for (int i = 1; i < 32; i = i + 1) begin  
-            //master.ram_inst.mem[i] = 24'h000000; // 其他地址初始化为 0  
+            //master.ram_inst.mem[i] = 24'h000000; // Other addresses are initialized to 0. 
         //end  
 
-        // 初始化 Slave 的 RAM 数据  
-        //slave.ram_inst.mem[0] = 24'hFEDCBA; // 地址 0 写入数据 0xFEDCBA  
+        // Initialize the Slave's RAM data  
+        //slave.ram_inst.mem[0] = 24'hFEDCBA; // Write data 0xFEDCBA to address 0 
         //for (int i = 1; i < 32; i = i + 1) begin  
-            //slave.ram_inst.mem[i] = 24'h000000; // 其他地址初始化为 0  
+            //slave.ram_inst.mem[i] = 24'h000000; // Other addresses are initialized to 0.
         //end  
 
-        // 等待 Master 和 Slave 开始通信  
+        //Waiting for Master and Slave to start communication.  
         #10000;  
 
-        // 检查通信结果  
+          
         $display("Test completed. Check waveforms for verification.");  
         //$stop;  
         $finish;  
     end  
 
     //----------------------------------  
-    // 生成 FSDB 波形文件  
+    // Generate FSDB waveform file  
     //----------------------------------  
     initial begin  
         $fsdbDumpfile("tb.fsdb");	    
